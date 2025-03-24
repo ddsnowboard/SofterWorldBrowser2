@@ -1,0 +1,59 @@
+#holder { 
+    display: inline-block;
+}
+
+#imageHolder {
+    width: 100%;
+}
+
+#UI {
+    width: 100%;
+}
+
+.button {
+    cursor: pointer;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    height: 40px;
+}
+
+#left {
+    text-align: left;
+    background-color: #456d48;
+}
+
+#right {
+    text-align: right;
+    background-color: #456d48;
+}
+
+#random {
+    text-align: center;
+    background-color: #8cb7a6;
+}
+
+#showTitle {
+    text-align: center;
+    background-color: #88a2aa;
+}
+
+#titleBox {
+    display: none;
+    position: absolute;
+    top: 25%;
+    left: 25%;
+    background-color: silver;
+    border-radius: 5px;
+    width: auto;
+    height: auto;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-right: 20px;
+    padding-left: 20px;
+}
+
+#prefetch {
+    display: none;
+}

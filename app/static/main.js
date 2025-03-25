@@ -1,5 +1,5 @@
 function Comic(image, title) {
-    this.image = url;
+    this.image = image;
     this.title = title;
 }
 let comics = {}
@@ -16,21 +16,19 @@ $(document).ready(function() {
             let p = fetch(comicUrl(id))
                 .then(res => res.json())
                 .then(jsonObj => new Comic(jsonObj["image"], jsonObj["title"]));
-            cached[id] = p;
-            p.then(comic => prefetchComic(comic.image));
+            comics[id] = p;
             return p;
         }
     }
 
-    function prefetchComic(comic) {
-        $("#prefetch").append("<img src=\"" + comic.image + "\">");
-    }
-
     function startCaching(number) {
-        getComic(number - 1);
-        getComic(number + 1);
-        nextRand = Math.floor(Math.random() * maxComics) + 1;
-        getComic(nextRand);
+        Promise.all([
+            getComic(number - 1),
+            getComic(number + 1),
+            (async () => {
+                nextRand = Math.floor(Math.random() * (await maxComics)) + 1;
+                await getComic(nextRand);
+            })()]);
     }
 
     function showComic(number, fromBackButton) {
@@ -39,7 +37,7 @@ $(document).ready(function() {
         // This removes the title box if it's there
         $("#titleBox").click();
         getComic(number).then(comic => {
-            $("#imageHolder").html("<img src=\"" + comic.image + "\">");
+            $("#imageHolder").html("<img src=\"data:image/png;base64, " + comic.image + "\">");
         });
         $("#number").html(number);
         startCaching(number);
@@ -51,32 +49,32 @@ $(document).ready(function() {
     const maxComics = fetch("/maxComicId").then(res => res.text()).then(txt => parseInt(txt));
     var comicNum;
     var nextRand;
-    $("#left").click(function() {
+    $("#left").click(async function() {
         if (comicNum != undefined) {
-            comicNum--;
+            comicNum = (await comicNum) - 1;
             showComic(comicNum, false);
         }
     });
-    $("#right").click(function() {
+    $("#right").click(async function() {
         if (comicNum != undefined) {
-            comicNum++;
+            comicNum = (await comicNum) + 1;
             showComic(comicNum, false);
         }
     });
     $("#random").click(async function() {
         let maxComicId = await maxComics;
-        if (nextRand == undefined) {
-            nextRand = Math.floor(Math.random() * maxComics) + 1;
+        if (nextRand === undefined) {
+            nextRand = Math.floor(Math.random() * maxComicId) + 1;
+            console.log("NEW RNG");
         }
         comicNum = nextRand;
         showComic(comicNum, false);
-        nextRand = undefined;
         startCaching(comicNum);
     });
     $("#showTitle").click(async function() {
         var $titleBox = $("#titleBox");
         if ($titleBox.css("display") === "none") {
-            $titleBox.html((await comics[comicNum]).title);
+            $titleBox.html((await getComic(comicNum)).title);
             $titleBox.css("display", "block");
         } else
             $titleBox.click();
@@ -157,7 +155,9 @@ $(document).ready(function() {
         comicNum = parseInt(queryString.get("comic"));
         showComic(comicNum, false);
     } else {
-        comicNum = maxComics.then(id => {
+        comicNum = maxComics
+        comicNum.then(id => {
+            console.log("LOOKING TO GET ID " + id);
             showComic(id, false);
         });
     }

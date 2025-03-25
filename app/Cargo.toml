@@ -11,3 +11,4 @@ cached = { version = "0.55.1", features = ["default", "async"] }
 serde = { version = "1.0.219", features = ["derive"] }
 reqwest = "0.12.15"
 scraper = "0.23.1"
+base64 = "0.22.1"

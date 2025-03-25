@@ -1,5 +1,6 @@
 use axum::extract::Path;
 use axum::{Json, Router, routing::get};
+use base64::prelude::*;
 use cached::proc_macro::cached;
 use scraper::{Html, Selector};
 use serde::Serialize;
@@ -10,10 +11,10 @@ async fn main() {
     // build our application with a route
     let app = Router::new()
         .route(
-            "/comic/{id}",
+            "/getComic/{id}",
             get(async |Path(id)| get_comic(Some(id)).await),
         )
-        .route("/comic/", get(get_newest_comic))
+        .route("/getComic/", get(get_newest_comic))
         .route("/maxComicId", get(max_comic_id))
         .fallback_service(ServeDir::new("static"));
 
@@ -40,23 +41,31 @@ async fn get_comic(id: Option<u32>) -> Json<Comic> {
     };
     let page_text = reqwest::get(url).await.unwrap().text().await.unwrap();
 
-    let parsed_html = Html::parse_document(&page_text);
-    let comic_img = {
-        let div_selector = Selector::parse("div#comicimg").unwrap();
-        let img_selector = Selector::parse("img").unwrap();
-        parsed_html
-            .select(&div_selector)
-            .next()
-            .unwrap()
-            .select(&img_selector)
-            .next()
-            .unwrap()
-            .value()
+    let (comic_title, img_url) = {
+        let parsed_html = Html::parse_document(&page_text);
+        let comic_img_tag = {
+            let div_selector = Selector::parse("div#comicimg").unwrap();
+            let img_selector = Selector::parse("img").unwrap();
+            parsed_html
+                .select(&div_selector)
+                .next()
+                .unwrap()
+                .select(&img_selector)
+                .next()
+                .unwrap()
+                .value()
+        };
+        let comic_title = comic_img_tag.attr("title").unwrap().to_string();
+        let image_url = comic_img_tag.attr("src").unwrap().to_string();
+        (comic_title, image_url)
     };
-
+    let image_base64 = {
+        let image_blob = reqwest::get(&img_url).await.unwrap().bytes().await.unwrap();
+        BASE64_STANDARD.encode(image_blob)
+    };
     axum::Json(Comic {
-        image: comic_img.attr("src").unwrap().to_string(),
-        title: comic_img.attr("title").unwrap().to_string(),
+        image: image_base64,
+        title: comic_title,
     })
 }
 

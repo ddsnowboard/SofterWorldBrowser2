@@ -44,6 +44,7 @@ $(document).ready(function() {
     }
     window.onpopstate = function(state)
     {
+        comicNum = state.state;
         showComic(state.state, true);
     };
     const maxComics = fetch("/maxComicId").then(res => res.text()).then(txt => parseInt(txt));

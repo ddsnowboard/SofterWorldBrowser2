@@ -6,11 +6,11 @@ use regex::Regex;
 use scraper::{Html, Selector};
 use serde::Serialize;
 use std::sync::LazyLock;
+use tokio::time::{self, Duration};
 use tower_http::services::ServeDir;
 
 #[tokio::main]
 async fn main() {
-    // build our application with a route
     let app = Router::new()
         .route(
             "/getComic/{id}",
@@ -20,9 +20,28 @@ async fn main() {
         .route("/maxComicId", get(max_comic_id))
         .fallback_service(ServeDir::new("static"));
 
-    // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let app = async {
+        let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+        axum::serve(listener, app).await.unwrap();
+    };
+
+    let populate_caches = async {
+        // This waits until the caches area almost empty to start repopulating them.
+        let mut cache_ttl = time::interval(Duration::from_secs(36000));
+        let mut rate_limit = time::interval(Duration::from_secs(3));
+        loop {
+            cache_ttl.tick().await;
+            println!("Refreshing cache...");
+            let max_comic_id: u32 = max_comic_id().await.parse().unwrap();
+            for id in 1..=max_comic_id {
+                rate_limit.tick().await;
+                let _ = get_comic(Some(id)).await;
+            }
+            println!("Refreshed cache.");
+        }
+    };
+
+    tokio::join!(app, populate_caches);
 }
 
 #[derive(Serialize, Clone)]

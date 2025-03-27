@@ -1,12 +1,17 @@
 use axum::extract::Path;
+use axum::http::header;
 use axum::response;
 use axum::{Json, Router, routing::get};
 use base64::prelude::*;
 use cached::proc_macro::cached;
+use futures::future;
+use rand::prelude::*;
 use regex::Regex;
+use rss::{ChannelBuilder, ItemBuilder};
 use scraper::{Html, Selector};
 use serde::Serialize;
 use std::sync::LazyLock;
+use std::time::{Duration as SysDuration, SystemTime};
 use tokio::time::{self, Duration};
 use tower_http::services::ServeDir;
 
@@ -19,6 +24,9 @@ async fn main() {
         )
         .route("/getComic/", get(get_newest_comic))
         .route("/maxComicId", get(max_comic_id))
+        .route("/rss.xml", get(rss_feed))
+        // For compatibility
+        .route("/rss.php", get(rss_feed))
         .fallback_service(ServeDir::new("static"));
 
     let app = async {
@@ -53,6 +61,7 @@ async fn main() {
 
 #[derive(Serialize, Clone)]
 struct Comic {
+    image_url: String,
     image: String,
     title: String,
 }
@@ -67,7 +76,7 @@ async fn get_newest_comic() -> response::Result<Json<Comic>> {
     time_refresh = false,
     result = true
 )]
-async fn get_comic(id: Option<u32>) -> response::Result<Json<Comic>> {
+async fn get_comic_data(id: Option<u32>) -> response::Result<Comic> {
     let stringify_id = || id.map(|id| format!("{}", id)).unwrap_or("None".to_string());
     let (comic_title, img_url) = {
         let parsed_html = get_comic_page(id).await?;
@@ -91,10 +100,15 @@ async fn get_comic(id: Option<u32>) -> response::Result<Json<Comic>> {
         let image_blob = reqwest::get(&img_url).await.unwrap().bytes().await.unwrap();
         BASE64_STANDARD.encode(image_blob)
     };
-    Ok(axum::Json(Comic {
+    Ok(Comic {
         image: image_base64,
         title: comic_title,
-    }))
+        image_url: img_url,
+    })
+}
+
+async fn get_comic(id: Option<u32>) -> response::Result<Json<Comic>> {
+    Ok(axum::Json(get_comic_data(id).await?))
 }
 
 async fn get_comic_page(id: Option<u32>) -> response::Result<Html> {
@@ -141,4 +155,74 @@ async fn max_comic_id() -> response::Result<String> {
         .parse()
         .unwrap();
     Ok(format!("{}", index + 1))
+}
+
+#[cached(
+    sync_writes = "default",
+    time = 36000,
+    time_refresh = false,
+    result = true
+)]
+async fn rss_feed() -> response::Result<(header::HeaderMap, String)> {
+    static ONE_DAY: SysDuration = Duration::from_secs(24 * 60 * 60);
+    static N_RSS_FEED_ITEMS: u64 = 10;
+    let headers = {
+        let mut base = header::HeaderMap::new();
+        base.insert(header::CONTENT_TYPE, "text/html".parse().unwrap());
+        base
+    };
+    let current_day = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .div_duration_f32(ONE_DAY) as u64;
+    let max_comic_id: u64 = max_comic_id().await?.parse().unwrap();
+    let futures =
+        (0..N_RSS_FEED_ITEMS).map(async |days_ago| -> response::Result<_> {
+            let current_day = current_day - days_ago;
+            let mut rng = SmallRng::seed_from_u64(current_day);
+            let comic_id = rng.random_range(1..=max_comic_id);
+            let comic_data = get_comic_data(Some(comic_id as u32)).await?;
+            Ok(ItemBuilder::default()
+            .title(format!("{}", comic_id))
+            .description(format!(
+                r#"<a href="http://softerworld.casualvegetables.duckdns.org/?comic={idx}">
+					<img src="{url}" />				</a> <br />
+                                        {title}
+					"#,
+                idx = comic_id,
+                url = comic_data.image_url,
+                title = comic_data.title
+            ))
+            .link(format!("https://www.asofterworld.com/index.php?id={idx}", idx=comic_id))
+            .build()
+            )
+        });
+
+    Ok((
+        headers,
+        format!(
+            "{}",
+            ChannelBuilder::default()
+                .title("A Softer World")
+                .link("http://softerworld.casualvegetables.duckdns.org")
+                .description("A Softer World Comic")
+                .language("us-en".to_string())
+                .items(
+                    future::try_join_all(futures)
+                        .await
+                        .map_err(|e| format!("{:?}", e))?
+                )
+                .namespaces([
+                    (
+                        "atom".to_string(),
+                        "http://www.w3.org/2005/Atom".to_string()
+                    ),
+                    (
+                        "dc".to_string(),
+                        "http://purl.org/dc/elements/1.1/".to_string()
+                    )
+                ])
+                .build()
+        ),
+    ))
 }

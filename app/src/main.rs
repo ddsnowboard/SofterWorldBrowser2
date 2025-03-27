@@ -1,4 +1,5 @@
 use axum::extract::Path;
+use axum::response;
 use axum::{Json, Router, routing::get};
 use base64::prelude::*;
 use cached::proc_macro::cached;
@@ -32,7 +33,13 @@ async fn main() {
         loop {
             cache_ttl.tick().await;
             println!("Refreshing cache...");
-            let max_comic_id: u32 = max_comic_id().await.parse().unwrap();
+            let max_comic_id: u32 = match max_comic_id().await {
+                Ok(id_string) => id_string.parse().unwrap(),
+                Err(ref e) => {
+                    println!("Error in cache refreshing: {:?}", e);
+                    continue;
+                }
+            };
             for id in 1..=max_comic_id {
                 rate_limit.tick().await;
                 let _ = get_comic(Some(id)).await;
@@ -50,24 +57,30 @@ struct Comic {
     title: String,
 }
 
-async fn get_newest_comic() -> Json<Comic> {
+async fn get_newest_comic() -> response::Result<Json<Comic>> {
     get_comic(None).await
 }
 
-#[cached(sync_writes = "by_key", time = 36000, time_refresh = false)]
-async fn get_comic(id: Option<u32>) -> Json<Comic> {
+#[cached(
+    sync_writes = "by_key",
+    time = 36000,
+    time_refresh = false,
+    result = true
+)]
+async fn get_comic(id: Option<u32>) -> response::Result<Json<Comic>> {
+    let stringify_id = || id.map(|id| format!("{}", id)).unwrap_or("None".to_string());
     let (comic_title, img_url) = {
-        let parsed_html = get_comic_page(id).await;
+        let parsed_html = get_comic_page(id).await?;
         let comic_img_tag = {
             let div_selector = Selector::parse("div#comicimg").unwrap();
             let img_selector = Selector::parse("img").unwrap();
             parsed_html
                 .select(&div_selector)
                 .next()
-                .unwrap()
+                .ok_or(format!("Could not find div for id {}", stringify_id()))?
                 .select(&img_selector)
                 .next()
-                .unwrap()
+                .ok_or(format!("Could not find img for id {}", stringify_id()))?
                 .value()
         };
         let comic_title = comic_img_tag.attr("title").unwrap().to_string();
@@ -78,26 +91,36 @@ async fn get_comic(id: Option<u32>) -> Json<Comic> {
         let image_blob = reqwest::get(&img_url).await.unwrap().bytes().await.unwrap();
         BASE64_STANDARD.encode(image_blob)
     };
-    axum::Json(Comic {
+    Ok(axum::Json(Comic {
         image: image_base64,
         title: comic_title,
-    })
+    }))
 }
 
-static ID_FROM_LINK_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"asofterworld\.com/index\.php\?id=(\d+)").unwrap());
-async fn get_comic_page(id: Option<u32>) -> Html {
+async fn get_comic_page(id: Option<u32>) -> response::Result<Html> {
     let url = match id {
         Some(id) => format!("https://www.asofterworld.com/index.php?id={}", id),
         None => "https://www.asofterworld.com/index.php".to_string(),
     };
-    let page_text = reqwest::get(url).await.unwrap().text().await.unwrap();
-    Html::parse_document(&page_text)
+    let page_text = reqwest::get(url)
+        .await
+        .map_err(|e| format!("{:?}", e))?
+        .text()
+        .await
+        .map_err(|e| format!("{:?}", e))?;
+    Ok(Html::parse_document(&page_text))
 }
 
-#[cached(sync_writes = "default", time = 36000, time_refresh = false)]
-async fn max_comic_id() -> String {
-    let parsed_html = get_comic_page(None).await;
+#[cached(
+    sync_writes = "default",
+    time = 36000,
+    time_refresh = false,
+    result = true
+)]
+async fn max_comic_id() -> response::Result<String> {
+    static ID_FROM_LINK_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"asofterworld\.com/index\.php\?id=(\d+)").unwrap());
+    let parsed_html = get_comic_page(None).await?;
     let div_selector = Selector::parse("div#previous").unwrap();
     let link_selector = Selector::parse("a").unwrap();
     let link_tag = parsed_html
@@ -117,5 +140,5 @@ async fn max_comic_id() -> String {
         .as_str()
         .parse()
         .unwrap();
-    format!("{}", index + 1)
+    Ok(format!("{}", index + 1))
 }

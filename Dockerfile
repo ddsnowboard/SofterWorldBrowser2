@@ -6,6 +6,7 @@ RUN cargo install --path .
 
 FROM alpine:3.21.3
 COPY --from=builder /usr/local/cargo/bin/app /usr/local/bin/app
+COPY ./app/static ./static
 EXPOSE 3000
 
 CMD ["app"]

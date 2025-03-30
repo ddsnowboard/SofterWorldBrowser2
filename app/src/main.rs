@@ -17,42 +17,24 @@ use tower_http::services::ServeDir;
 
 #[tokio::main]
 async fn main() {
-    let ss = SofterSpeedScroller::new();
-    let app = ss.get_service_future();
-    let populate_caches = ss.get_cacher_future();
+    let app = Router::new()
+        .route(
+            "/getComic/{id}",
+            get(async |Path(id)| get_comic(Some(id)).await),
+        )
+        .route("/getComic/", get(get_newest_comic))
+        .route("/maxComicId", get(max_comic_id))
+        .route("/rss.xml", get(rss_feed))
+        // For compatibility
+        .route("/rss.php", get(rss_feed))
+        .fallback_service(ServeDir::new("static"));
 
-    tokio::join!(app, populate_caches);
-}
-
-struct SofterSpeedScroller {}
-
-impl SofterSpeedScroller {
-    fn new() -> Self {
-        Self {}
-    }
-}
-
-impl SpeedScroller for SofterSpeedScroller {}
-
-trait SpeedScroller {
-    async fn get_service_future(&self) {
-        let app = Router::new()
-            .route(
-                "/getComic/{id}",
-                get(async |Path(id)| get_comic(Some(id)).await),
-            )
-            .route("/getComic/", get(get_newest_comic))
-            .route("/maxComicId", get(max_comic_id))
-            .route("/rss.xml", get(rss_feed))
-            // For compatibility
-            .route("/rss.php", get(rss_feed))
-            .fallback_service(ServeDir::new("static"));
-
+    let app = async {
         let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
         axum::serve(listener, app).await.unwrap();
-    }
+    };
 
-    async fn get_cacher_future(&self) {
+    let populate_caches = async {
         // This waits until the caches area almost empty to start repopulating them.
         let mut cache_ttl = time::interval(Duration::from_secs(36000));
         let mut rate_limit = time::interval(Duration::from_secs(3));
@@ -72,7 +54,9 @@ trait SpeedScroller {
             }
             println!("Refreshed cache.");
         }
-    }
+    };
+
+    tokio::join!(app, populate_caches);
 }
 
 #[derive(Serialize, Clone)]
@@ -192,12 +176,13 @@ async fn rss_feed() -> response::Result<(header::HeaderMap, String)> {
         .unwrap()
         .div_duration_f32(ONE_DAY) as u64;
     let max_comic_id: u64 = max_comic_id().await?.parse().unwrap();
-    let futures = (0..N_RSS_FEED_ITEMS).map(async |days_ago| -> response::Result<_> {
-        let current_day = current_day - days_ago;
-        let mut rng = SmallRng::seed_from_u64(current_day);
-        let comic_id = rng.random_range(1..=max_comic_id);
-        let comic_data = get_comic_data(Some(comic_id as u32)).await?;
-        Ok(ItemBuilder::default()
+    let futures =
+        (0..N_RSS_FEED_ITEMS).map(async |days_ago| -> response::Result<_> {
+            let current_day = current_day - days_ago;
+            let mut rng = SmallRng::seed_from_u64(current_day);
+            let comic_id = rng.random_range(1..=max_comic_id);
+            let comic_data = get_comic_data(Some(comic_id as u32)).await?;
+            Ok(ItemBuilder::default()
             .title(format!("{}", comic_id))
             .description(format!(
                 r#"<a href="http://softerworld.casualvegetables.duckdns.org/?comic={idx}">
@@ -208,12 +193,10 @@ async fn rss_feed() -> response::Result<(header::HeaderMap, String)> {
                 url = comic_data.image_url,
                 title = comic_data.title
             ))
-            .link(format!(
-                "https://www.asofterworld.com/index.php?id={idx}",
-                idx = comic_id
-            ))
-            .build())
-    });
+            .link(format!("https://www.asofterworld.com/index.php?id={idx}", idx=comic_id))
+            .build()
+            )
+        });
 
     Ok((
         headers,

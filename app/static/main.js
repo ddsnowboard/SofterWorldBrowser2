@@ -156,9 +156,8 @@ $(document).ready(function() {
         comicNum = parseInt(queryString.get("comic"));
         showComic(comicNum, false);
     } else {
-        comicNum = maxComics
-        comicNum.then(id => {
-            console.log("LOOKING TO GET ID " + id);
+        maxComics.then(id => {
+            comicNum = id
             showComic(id, false);
         });
     }

@@ -176,13 +176,12 @@ async fn rss_feed() -> response::Result<(header::HeaderMap, String)> {
         .unwrap()
         .div_duration_f32(ONE_DAY) as u64;
     let max_comic_id: u64 = max_comic_id().await?.parse().unwrap();
-    let futures =
-        (0..N_RSS_FEED_ITEMS).map(async |days_ago| -> response::Result<_> {
-            let current_day = current_day - days_ago;
-            let mut rng = SmallRng::seed_from_u64(current_day);
-            let comic_id = rng.random_range(1..=max_comic_id);
-            let comic_data = get_comic_data(Some(comic_id as u32)).await?;
-            Ok(ItemBuilder::default()
+    let futures = (0..N_RSS_FEED_ITEMS).map(async |days_ago| -> response::Result<_> {
+        let current_day = current_day - days_ago;
+        let mut rng = SmallRng::seed_from_u64(current_day);
+        let comic_id = rng.random_range(1..=max_comic_id);
+        let comic_data = get_comic_data(Some(comic_id as u32)).await?;
+        Ok(ItemBuilder::default()
             .title(format!("{}", comic_id))
             .description(format!(
                 r#"<a href="http://softerworld.casualvegetables.duckdns.org/?comic={idx}">
@@ -193,10 +192,12 @@ async fn rss_feed() -> response::Result<(header::HeaderMap, String)> {
                 url = comic_data.image_url,
                 title = comic_data.title
             ))
-            .link(format!("https://www.asofterworld.com/index.php?id={idx}", idx=comic_id))
-            .build()
-            )
-        });
+            .link(format!(
+                "https://www.asofterworld.com/index.php?id={idx}",
+                idx = comic_id
+            ))
+            .build())
+    });
 
     Ok((
         headers,

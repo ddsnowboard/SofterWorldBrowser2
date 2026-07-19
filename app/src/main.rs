@@ -3,7 +3,7 @@ use axum::http::header;
 use axum::response;
 use axum::{Json, Router, routing::get};
 use base64::prelude::*;
-use cached::proc_macro::cached;
+use cached::macros::cached;
 use futures::future;
 use rand::prelude::*;
 use regex::Regex;
@@ -66,16 +66,12 @@ struct Comic {
     title: String,
 }
 
+#[allow(clippy::result_large_err)]
 async fn get_newest_comic() -> response::Result<Json<Comic>> {
     get_comic(None).await
 }
 
-#[cached(
-    sync_writes = "by_key",
-    time = 36000,
-    time_refresh = false,
-    result = true
-)]
+#[cached(sync_writes = "by_key", ttl = 36000, refresh = false)]
 async fn get_comic_data(id: Option<u32>) -> response::Result<Comic> {
     let stringify_id = || id.map(|id| format!("{}", id)).unwrap_or("None".to_string());
     let (comic_title, img_url) = {
@@ -127,12 +123,7 @@ async fn get_comic_page(id: Option<u32>) -> response::Result<Html> {
     Ok(Html::parse_document(&page_text))
 }
 
-#[cached(
-    sync_writes = "default",
-    time = 36000,
-    time_refresh = false,
-    result = true
-)]
+#[cached(sync_writes = "default", ttl = 36000, refresh = false)]
 async fn max_comic_id() -> response::Result<String> {
     static ID_FROM_LINK_REGEX: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"asofterworld\.com/index\.php\?id=(\d+)").unwrap());
@@ -159,12 +150,7 @@ async fn max_comic_id() -> response::Result<String> {
     Ok(format!("{}", index + 1))
 }
 
-#[cached(
-    sync_writes = "default",
-    time = 36000,
-    time_refresh = false,
-    result = true
-)]
+#[cached(sync_writes = "default", ttl = 36000, refresh = false)]
 async fn rss_feed() -> response::Result<(header::HeaderMap, String)> {
     static ONE_DAY: SysDuration = Duration::from_secs(24 * 60 * 60);
     static N_RSS_FEED_ITEMS: u64 = 10;

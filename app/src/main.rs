@@ -107,10 +107,12 @@ async fn get_comic_data(id: Option<u32>) -> response::Result<Comic> {
     })
 }
 
+#[allow(clippy::result_large_err)]
 async fn get_comic(id: Option<u32>) -> response::Result<Json<Comic>> {
     Ok(axum::Json(get_comic_data(id).await?))
 }
 
+#[allow(clippy::result_large_err)]
 async fn get_comic_page(id: Option<u32>) -> response::Result<Html> {
     let url = match id {
         Some(id) => format!("https://www.asofterworld.com/index.php?id={}", id),
@@ -168,7 +170,7 @@ async fn rss_feed() -> response::Result<(header::HeaderMap, String)> {
     static N_RSS_FEED_ITEMS: u64 = 10;
     let headers = {
         let mut base = header::HeaderMap::new();
-        base.insert(header::CONTENT_TYPE, "text/html".parse().unwrap());
+        base.insert(header::CONTENT_TYPE, "application/rss+xml".parse().unwrap());
         base
     };
     let current_day = SystemTime::now()

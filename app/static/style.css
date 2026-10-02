@@ -1,13 +1,23 @@
 #holder { 
-    display: inline-block;
+    display: inline-grid;
+    grid-template-columns: 20% 1fr 20% [edge];
+    grid-template-rows: 10% max-content min-content min-content [edge];
+    width: min(max-content, 1vw);
+}
+
+#number {
+    grid-column: 1 / span edge;
+    grid-row: 1 / auto;
 }
 
 #imageHolder {
-    width: 100%;
+    grid-column: 1 / span edge;
+    grid-row: 2 / auto;
+    background-repeat: no-repeat;
 }
 
-#UI {
-    width: 100%;
+#imageHolder > img {
+    max-width: 100%;
 }
 
 .button {
@@ -17,26 +27,38 @@
     -ms-user-select: none;
     user-select: none;
     height: 40px;
+    font-size: 11pt;
+    margin: 5px;
+    border-radius: 10px;
+    padding: 0 10px;
 }
 
 #left {
     text-align: left;
     background-color: #456d48;
+    grid-column: 1 / auto;
+    grid-row: 3 / auto;
 }
 
 #right {
     text-align: right;
     background-color: #456d48;
+    grid-column: 3 / auto;
+    grid-row: 3 / auto;
 }
 
 #random {
     text-align: center;
     background-color: #8cb7a6;
+    grid-column: 2 / auto;
+    grid-row: 3 / auto;
 }
 
 #showTitle {
     text-align: center;
     background-color: #88a2aa;
+    grid-column: 1 / span edge;
+    grid-row: 4 / auto;
 }
 
 #titleBox {

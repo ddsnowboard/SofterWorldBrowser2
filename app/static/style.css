@@ -1,3 +1,9 @@
+body {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+}
+
 #holder { 
     display: inline-grid;
     grid-template-columns: 20% 1fr 20% [edge];
@@ -8,6 +14,7 @@
 #number {
     grid-column: 1 / span edge;
     grid-row: 1 / auto;
+    text-align: center;
 }
 
 #imageHolder {
